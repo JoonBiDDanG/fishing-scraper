@@ -218,6 +218,7 @@ def collect():
     result_rows = []
     last_request_at = 0.0
     request_count = 0
+    source_errors = []
 
     for fleet in registry["sunsang24"]:
         host = fleet["host"]
@@ -323,29 +324,46 @@ def collect():
         if not boat.get("name") or not boat.get("port"):
             raise CollectionError("더피씽 선박 이름과 항구를 등록해야 합니다.")
 
+    thefishing_unavailable = False
     for boat in registry.get("thefishing", []):
+        if thefishing_unavailable:
+            break
         uid = str(boat["uid"])
         page_url = f"https://thefishing.kr/reservation/list.php?uid={uid}"
         delay = MIN_REQUEST_GAP_SECONDS - (time.monotonic() - last_request_at)
         if delay > 0:
             time.sleep(delay)
         try:
-            page = session.get(page_url, headers={"Accept": "text/html"}, timeout=TIMEOUT_SECONDS)
+            page = session.get(page_url, headers={"Accept": "text/html"}, timeout=10)
         except requests.RequestException as exc:
-            raise CollectionError(f"더피씽 공개 일정 페이지 연결 실패: {exc}") from exc
+            source_errors.append(f"더피씽: 공개 달력 연결 실패 ({type(exc).__name__})")
+            print(source_errors[-1], file=sys.stderr)
+            thefishing_unavailable = True
+            break
         last_request_at = time.monotonic()
         request_count += 1
         if page.status_code in (401, 403, 429, 503):
-            raise CollectionError(f"더피씽 요청이 제한되었습니다 (HTTP {page.status_code}). 중단합니다.")
+            source_errors.append(f"더피씽: 공개 달력 접근 제한 (HTTP {page.status_code})")
+            print(source_errors[-1], file=sys.stderr)
+            thefishing_unavailable = True
+            break
         if not page.ok or "html" not in page.headers.get("Content-Type", "").lower():
-            raise CollectionError(f"더피씽 공개 페이지가 HTML이 아닙니다 (HTTP {page.status_code}).")
+            source_errors.append(f"더피씽: 공개 페이지 HTML을 받지 못함 (HTTP {page.status_code})")
+            print(source_errors[-1], file=sys.stderr)
+            thefishing_unavailable = True
+            break
         page_html = page.text
         bootstrap = TheFishingPageParser()
         bootstrap.feed(page_html)
         species = " · ".join(dict.fromkeys(bootstrap.fish_tags))
         if not any(term in species for term in SPECIES_TERMS):
             continue
-        calendar_uid = thefishing_calendar_uid(page_html)
+        try:
+            calendar_uid = thefishing_calendar_uid(page_html)
+        except CollectionError as exc:
+            source_errors.append(f"더피씽 {boat['name']}: {exc}")
+            print(source_errors[-1], file=sys.stderr)
+            continue
         for month in months:
             delay = MIN_REQUEST_GAP_SECONDS - (time.monotonic() - last_request_at)
             if delay > 0:
@@ -355,16 +373,25 @@ def collect():
                     "https://thefishing.kr/reservation/list.view.view.1.ajax.new.php",
                     data={"date6": month, "st_uid": calendar_uid, "pa_uid": uid},
                     headers={"Accept": "text/html", "Referer": page_url},
-                    timeout=TIMEOUT_SECONDS,
+                    timeout=10,
                 )
             except requests.RequestException as exc:
-                raise CollectionError(f"더피씽 공개 달력 조회 실패: {exc}") from exc
+                source_errors.append(f"더피씽: 월간 달력 연결 실패 ({type(exc).__name__})")
+                print(source_errors[-1], file=sys.stderr)
+                thefishing_unavailable = True
+                break
             last_request_at = time.monotonic()
             request_count += 1
             if response.status_code in (401, 403, 429, 503):
-                raise CollectionError(f"더피씽 달력 요청이 제한되었습니다 (HTTP {response.status_code}). 중단합니다.")
+                source_errors.append(f"더피씽: 월간 달력 접근 제한 (HTTP {response.status_code})")
+                print(source_errors[-1], file=sys.stderr)
+                thefishing_unavailable = True
+                break
             if not response.ok or "html" not in response.headers.get("Content-Type", "").lower():
-                raise CollectionError(f"더피씽 달력 응답이 HTML이 아닙니다 (HTTP {response.status_code}).")
+                source_errors.append(f"더피씽: 월간 달력 HTML 응답 오류 (HTTP {response.status_code})")
+                print(source_errors[-1], file=sys.stderr)
+                thefishing_unavailable = True
+                break
             calendar_rows = parse_thefishing_calendar(response.text, month)
             for row in calendar_rows:
                 result_rows.append({
@@ -394,11 +421,14 @@ def collect():
         "updated_at": updated_at,
         "source": "선상24·더피씽 공개 예약 달력",
         "request_count": request_count,
+        "source_errors": source_errors,
         "schedules": result_rows,
         "data": result_rows,
     }
     OUTPUT_PATH.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"저장 완료: {len(result_rows)}건 / {request_count}회 조회 / {updated_at}")
+    if source_errors:
+        print(f"일부 출처 미수집: {len(source_errors)}건. 위 오류를 확인하세요.", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -12,9 +12,9 @@ This file records first-party schedule request shapes found in the user-supplied
 
 ## Collection currently enabled
 
-The GitHub Actions collector currently calls only the four configured Sunsang24 fleet entries in `source_registry.json` (entry IDs 2455, 698, 1634, and 885), for the current and next calendar months. The additional `think.sunsang24.com` entry 885 (바다생각호, 충남 영목항) was matched against the official fleet page and its public monthly JSON response. It keeps only boats explicitly registered: unknown boat IDs included in a fleet response are skipped, while a registered ID whose name changes fails the run. It then keeps rows whose public species label identifies 쭈꾸미/주꾸미 or 갑오징어. A seat count is recorded only when the source explicitly exposes it.
+The GitHub Actions collector currently calls only the nine configured Sunsang24 fleet entries in `source_registry.json` (2455, 698, 1634, 885, 1647, 1964, 2082, 1987, and 2086), for the current and next calendar months. The added entries were matched against official fleet pages and their public monthly JSON responses: 바다생각호 (885); 군산 프로선단's 어종 대상 선박 아리랑호, 샤크호, 슈퍼마린호, 킹마린호, 프로호, 신성호 (fleet entry 1647); 한사리피싱 (1964); 다래호 (2082); 임금호 (1987); 해양호 (2086). It keeps only boats explicitly registered: unknown boat IDs included in a fleet response are skipped, while a registered ID whose name changes fails the run. It then keeps rows whose public species label identifies 쭈꾸미/주꾸미 or 갑오징어. A seat count is recorded only when the source explicitly exposes it.
 
-The workflow runs every 30 minutes, with at least two seconds between requests. The current and next month are refreshed with eight small monthly requests per run. It stops on access denial, rate limit, non-JSON response, identity mismatch, or unexpected response structure; failed runs do not replace the previous snapshot.
+The workflow runs every 30 minutes, with at least two seconds between requests. The current and next month are refreshed with eighteen small monthly requests per run. It stops on access denial, rate limit, non-JSON response, identity mismatch, or unexpected response structure; failed runs do not replace the previous snapshot.
 
 ## Limits and safety
 

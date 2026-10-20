@@ -10918,7 +10918,7 @@
   "booking_source_hosts": 83,
   "limitations": "Public sitemap pages and server-rendered listings only. This is a discovery catalog, not a complete mirror of all IPZIL providers. Source URLs are user-facing booking links; they do not authorize automated polling. Provider identifiers are source-specific.",
   "failed_sitemap_pages": [
-    "https://ipzil.com/port/%EB%82%98%EC%95%A0%EB%8F%84%ED%95%AD"
+    "https://ipzil.com/port/%EB%82%98%EC%95%94%EB%8F%84%ED%95%AD"
   ],
   "disclaimer": "Collected only from sitemap-listed public page HTML and its server-rendered schedule cards. This catalog is a partial discovery list, not a complete mirror. Booking links are for user navigation only and are not permission for automated polling."
 }

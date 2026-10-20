@@ -41,6 +41,12 @@ def load_registry() -> dict:
             raise CollectionError("등록되지 않은 선상24 진입 ID입니다.")
         if not re.fullmatch(r"[a-z0-9.-]+\.sunsang24\.com", fleet.get("host", "")):
             raise CollectionError("허용된 선상24 선사 호스트가 아닙니다.")
+        booking_url_template = fleet.get("booking_url_template")
+        if booking_url_template not in (
+            None,
+            "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+        ):
+            raise CollectionError("허용되지 않은 선상24 예약 페이지 주소입니다.")
         if not isinstance(fleet.get("ships"), dict) or not fleet["ships"]:
             raise CollectionError("선박 ID와 이름을 명시적으로 등록해야 합니다.")
         for ship_id, ship in fleet["ships"].items():
@@ -205,9 +211,13 @@ def collect():
                     if isinstance(start, str) and re.fullmatch(r"\d{2}:\d{2}:\d{2}", start):
                         departure = start[:5]
 
-                booking_url = (
-                    f"https://{host}/ship/schedule_fleet/{month}#d{actual_date}"
-                )
+                booking_url_template = fleet.get("booking_url_template")
+                if booking_url_template:
+                    booking_url = booking_url_template.format(ship_id=ship_id)
+                else:
+                    booking_url = (
+                        f"https://{host}/ship/schedule_fleet/{month}#d{actual_date}"
+                    )
                 result_rows.append({
                     "id": f"sunsang24:{ship_id}:{actual_date}:{row['schedule_no']}",
                     "provider": "sunsang24",

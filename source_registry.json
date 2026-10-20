@@ -109,6 +109,86 @@
           "port": "영목항"
         }
       }
+    },
+    {
+      "entry_id": "1647",
+      "host": "profleet.sunsang24.com",
+      "ships": {
+        "506": {
+          "name": "신성호",
+          "region": "전북",
+          "port": "비응항"
+        },
+        "1339": {
+          "name": "샤크호",
+          "region": "전북",
+          "port": "비응항"
+        },
+        "1341": {
+          "name": "슈퍼마린호",
+          "region": "전북",
+          "port": "비응항"
+        },
+        "1343": {
+          "name": "킹마린호",
+          "region": "전북",
+          "port": "비응항"
+        },
+        "1344": {
+          "name": "프로호",
+          "region": "전북",
+          "port": "비응항"
+        },
+        "1647": {
+          "name": "아리랑호",
+          "region": "전북",
+          "port": "비응항"
+        }
+      }
+    },
+    {
+      "entry_id": "1964",
+      "host": "hansari.sunsang24.com",
+      "ships": {
+        "1964": {
+          "name": "한사리피싱",
+          "region": "경남",
+          "port": "신향항"
+        }
+      }
+    },
+    {
+      "entry_id": "2082",
+      "host": "darae.sunsang24.com",
+      "ships": {
+        "2082": {
+          "name": "다래호",
+          "region": "경남",
+          "port": "팔포항"
+        }
+      }
+    },
+    {
+      "entry_id": "1987",
+      "host": "kingfishing.sunsang24.com",
+      "ships": {
+        "1987": {
+          "name": "임금호",
+          "region": "경남",
+          "port": "팔포항"
+        }
+      }
+    },
+    {
+      "entry_id": "2086",
+      "host": "haeyang.sunsang24.com",
+      "ships": {
+        "2086": {
+          "name": "해양호",
+          "region": "충남",
+          "port": "왜목항"
+        }
+      }
     }
   ]
 }

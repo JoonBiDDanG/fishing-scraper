@@ -12,7 +12,7 @@ This file records first-party schedule request shapes found in the user-supplied
 
 ## Collection currently enabled
 
-The GitHub Actions collector currently calls only the three configured Sunsang24 fleet entries in `source_registry.json` (entry IDs 2455, 698, and 1634), for the current and next calendar months. It checks that each returned boat ID and name match the explicit registry and keeps only rows whose public species label identifies 쭈꾸미/주꾸미 or 갑오징어. A seat count is recorded only when the source explicitly exposes it.
+The GitHub Actions collector currently calls only the three configured Sunsang24 fleet entries in `source_registry.json` (entry IDs 2455, 698, and 1634), for the current and next calendar months. It keeps only boats explicitly registered: unknown boat IDs included in a fleet response are skipped, while a registered ID whose name changes fails the run. It then keeps rows whose public species label identifies 쭈꾸미/주꾸미 or 갑오징어. A seat count is recorded only when the source explicitly exposes it.
 
 The workflow runs every 30 minutes, with at least two seconds between requests. The current and next month are refreshed with six small monthly requests per run. It stops on access denial, rate limit, non-JSON response, identity mismatch, or unexpected response structure; failed runs do not replace the previous snapshot.
 

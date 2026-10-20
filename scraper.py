@@ -78,14 +78,14 @@ def parse_thefishing_calendar(html: str, month: str) -> list[dict]:
     rows = []
     for cell in parser.cells:
         attrs_text = " ".join(str(v) for v in cell["attrs"].values())
-        match = re.search(r"(?<!\\d)(20\\d{6})(?!\\d)", attrs_text)
+        match = re.search(r"(?<!\d)(20\d{6})(?!\d)", attrs_text)
         if not match:
             continue
         day = match.group(1)
         if day[:6] != month:
             continue
         classes = cell["classes"]
-        count_match = re.search(r"\\d{1,3}", cell["count_text"])
+        count_match = re.search(r"\d{1,3}", cell["count_text"])
         count = int(count_match.group()) if count_match else None
         if "wait_btn" in classes:
             status = "full"
@@ -100,9 +100,8 @@ def parse_thefishing_calendar(html: str, month: str) -> list[dict]:
 
 
 def thefishing_calendar_uid(html: str) -> str:
-    # Accept only the numeric calendar UID exposed by the public bootstrap page.
     matches = set(re.findall(
-        r"(?:st_uid|calendar_uid)\\s*(?:=|:)\\s*['\\\"]?(\\d{1,12})",
+        r"""(?:st_uid|calendar_uid)\s*(?:=|:)\s*['"]?(\d{1,12})""",
         html,
         flags=re.IGNORECASE,
     ))
@@ -111,10 +110,10 @@ def thefishing_calendar_uid(html: str) -> str:
     return next(iter(matches))
 
 
-
 def load_registry() -> dict:
     value = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    if (value.get("schema_version") != 1 or not isinstance(value.get("sunsang24"), list)\n            or not isinstance(value.get("thefishing", []), list)):
+    if (value.get("schema_version") != 1 or not isinstance(value.get("sunsang24"), list)
+            or not isinstance(value.get("thefishing", []), list)):
         raise CollectionError("source_registry.json 형식이 올바르지 않습니다.")
     for fleet in value["sunsang24"]:
         if not re.fullmatch(r"[1-9][0-9]{0,11}", str(fleet.get("entry_id", ""))):

@@ -2,6 +2,7 @@ name: Update fishing data
 
 on:
   schedule:
+    # Refresh at minute 00 and 30 of each hour. A denied request stops safely.
     - cron: "*/30 * * * *"
   workflow_dispatch:
   push:

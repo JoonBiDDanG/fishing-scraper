@@ -170,8 +170,18 @@ def collect():
                 ship_id = str(ship.get("no", ""))
                 source_name = str(ship.get("name", "")).strip()
                 expected = expected_ships.get(ship_id)
-                if expected is None or source_name != expected["name"]:
-                    raise CollectionError(f"{host}에서 등록되지 않은 선박 ID/이름을 반환해 중단했습니다.")
+                if expected is None:
+                    print(
+                        f"[{host}] 등록되지 않은 선박({ship_id}: {source_name}) 일정은 제외합니다.",
+                        file=sys.stderr,
+                    )
+                    continue
+                if source_name != expected["name"]:
+                    raise CollectionError(
+                        f"{host}의 등록 선박 ID {ship_id} 이름이 변경되었습니다 "
+                        f"(등록: {expected['name']}, 응답: {source_name}). "
+                        "source_registry.json 확인이 필요합니다."
+                    )
                 actual_date = str(row.get("sdate") or row.get("date") or "")
                 try:
                     parsed_date = date.fromisoformat(actual_date)

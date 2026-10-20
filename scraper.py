@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from html.parser import HTMLParser
 import sys
 import time
 from datetime import date, datetime
@@ -32,9 +33,88 @@ class CollectionError(RuntimeError):
     pass
 
 
+class TheFishingPageParser(HTMLParser):
+    """Read public species labels and date/count cells; ignore all names and contact data."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.fish_tags = []
+        self.cells = []
+        self._cell = None
+        self._in_num = 0
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        classes = set((attrs.get("class") or "").split())
+        if tag == "span" and "re_fish_tag" in classes:
+            self._fish_active = True
+        if tag == "td":
+            self._cell = {"attrs": attrs, "classes": classes, "count_text": "", "text": ""}
+        if self._cell is not None and tag == "span" and "num" in classes:
+            self._in_num += 1
+
+    def handle_endtag(self, tag):
+        if tag == "span" and getattr(self, "_fish_active", False):
+            self._fish_active = False
+        if tag == "span" and self._in_num:
+            self._in_num -= 1
+        if tag == "td" and self._cell is not None:
+            self.cells.append(self._cell)
+            self._cell = None
+
+    def handle_data(self, data):
+        if getattr(self, "_fish_active", False):
+            value = data.strip()
+            if value:
+                self.fish_tags.append(value)
+        if self._cell is not None:
+            self._cell["text"] += data
+            if self._in_num:
+                self._cell["count_text"] += data
+
+
+def parse_thefishing_calendar(html: str, month: str) -> list[dict]:
+    parser = TheFishingPageParser()
+    parser.feed(html)
+    rows = []
+    for cell in parser.cells:
+        attrs_text = " ".join(str(v) for v in cell["attrs"].values())
+        match = re.search(r"(?<!\\d)(20\\d{6})(?!\\d)", attrs_text)
+        if not match:
+            continue
+        day = match.group(1)
+        if day[:6] != month:
+            continue
+        classes = cell["classes"]
+        count_match = re.search(r"\\d{1,3}", cell["count_text"])
+        count = int(count_match.group()) if count_match else None
+        if "wait_btn" in classes:
+            status = "full"
+        elif classes.intersection({"re_btn", "re_btn2"}) and count is not None and count > 0:
+            status = "available"
+        elif classes.intersection({"re_btn", "re_btn2"}) and count == 0:
+            status = "full"
+        else:
+            continue
+        rows.append({"date": f"{day[:4]}-{day[4:6]}-{day[6:]}", "remaining": count, "status": status})
+    return rows
+
+
+def thefishing_calendar_uid(html: str) -> str:
+    # Accept only the numeric calendar UID exposed by the public bootstrap page.
+    matches = set(re.findall(
+        r"(?:st_uid|calendar_uid)\\s*(?:=|:)\\s*['\\\"]?(\\d{1,12})",
+        html,
+        flags=re.IGNORECASE,
+    ))
+    if len(matches) != 1:
+        raise CollectionError("더피씽 공개 페이지에서 달력 식별자를 하나로 확인하지 못했습니다.")
+    return next(iter(matches))
+
+
+
 def load_registry() -> dict:
     value = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    if value.get("schema_version") != 1 or not isinstance(value.get("sunsang24"), list):
+    if (value.get("schema_version") != 1 or not isinstance(value.get("sunsang24"), list)\n            or not isinstance(value.get("thefishing", []), list)):
         raise CollectionError("source_registry.json 형식이 올바르지 않습니다.")
     for fleet in value["sunsang24"]:
         if not re.fullmatch(r"[1-9][0-9]{0,11}", str(fleet.get("entry_id", ""))):
@@ -237,6 +317,74 @@ def collect():
             if month_seen == 0:
                 raise CollectionError(f"{host} 응답에 {month} 일정의 선박 날짜가 없어 이전 저장본을 유지합니다.")
 
+
+    for boat in registry.get("thefishing", []):
+        if not re.fullmatch(r"[1-9][0-9]{0,11}", str(boat.get("uid", ""))):
+            raise CollectionError("등록되지 않은 더피씽 공개 상품 ID입니다.")
+        if not boat.get("name") or not boat.get("port"):
+            raise CollectionError("더피씽 선박 이름과 항구를 등록해야 합니다.")
+
+    for boat in registry.get("thefishing", []):
+        uid = str(boat["uid"])
+        page_url = f"https://thefishing.kr/reservation/list.php?uid={uid}"
+        delay = MIN_REQUEST_GAP_SECONDS - (time.monotonic() - last_request_at)
+        if delay > 0:
+            time.sleep(delay)
+        try:
+            page = session.get(page_url, headers={"Accept": "text/html"}, timeout=TIMEOUT_SECONDS)
+        except requests.RequestException as exc:
+            raise CollectionError(f"더피씽 공개 일정 페이지 연결 실패: {exc}") from exc
+        last_request_at = time.monotonic()
+        request_count += 1
+        if page.status_code in (401, 403, 429, 503):
+            raise CollectionError(f"더피씽 요청이 제한되었습니다 (HTTP {page.status_code}). 중단합니다.")
+        if not page.ok or "html" not in page.headers.get("Content-Type", "").lower():
+            raise CollectionError(f"더피씽 공개 페이지가 HTML이 아닙니다 (HTTP {page.status_code}).")
+        page_html = page.text
+        bootstrap = TheFishingPageParser()
+        bootstrap.feed(page_html)
+        species = " · ".join(dict.fromkeys(bootstrap.fish_tags))
+        if not any(term in species for term in SPECIES_TERMS):
+            continue
+        calendar_uid = thefishing_calendar_uid(page_html)
+        for month in months:
+            delay = MIN_REQUEST_GAP_SECONDS - (time.monotonic() - last_request_at)
+            if delay > 0:
+                time.sleep(delay)
+            try:
+                response = session.post(
+                    "https://thefishing.kr/reservation/list.view.view.1.ajax.new.php",
+                    data={"date6": month, "st_uid": calendar_uid, "pa_uid": uid},
+                    headers={"Accept": "text/html", "Referer": page_url},
+                    timeout=TIMEOUT_SECONDS,
+                )
+            except requests.RequestException as exc:
+                raise CollectionError(f"더피씽 공개 달력 조회 실패: {exc}") from exc
+            last_request_at = time.monotonic()
+            request_count += 1
+            if response.status_code in (401, 403, 429, 503):
+                raise CollectionError(f"더피씽 달력 요청이 제한되었습니다 (HTTP {response.status_code}). 중단합니다.")
+            if not response.ok or "html" not in response.headers.get("Content-Type", "").lower():
+                raise CollectionError(f"더피씽 달력 응답이 HTML이 아닙니다 (HTTP {response.status_code}).")
+            calendar_rows = parse_thefishing_calendar(response.text, month)
+            for row in calendar_rows:
+                result_rows.append({
+                    "id": f"thefishing:{uid}:{row['date']}",
+                    "provider": "thefishing",
+                    "platform": "더피씽",
+                    "boat": boat["name"],
+                    "boatId": uid,
+                    "speciesText": species,
+                    "date": row["date"],
+                    "departure": "",
+                    "remaining": row["remaining"],
+                    "status": row["status"],
+                    "region": boat.get("region", "미분류"),
+                    "port": boat["port"],
+                    "bookingUrl": page_url,
+                    "checkedAt": datetime.now(KST).isoformat(timespec="seconds"),
+                })
+
     if not result_rows:
         raise CollectionError("쭈꾸미·갑오징어 일정이 확인되지 않아 이전 저장본을 유지합니다.")
 
@@ -245,7 +393,7 @@ def collect():
     output = {
         "schema_version": 1,
         "updated_at": updated_at,
-        "source": "선상24 공개 월간 일정 API",
+        "source": "선상24·더피씽 공개 예약 달력",
         "request_count": request_count,
         "schedules": result_rows,
         "data": result_rows,

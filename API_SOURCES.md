@@ -1,24 +1,28 @@
-# Provider API inventory (from the supplied Android v3.0 APK)
+# Provider API inventory
 
-This file records only first-party schedule requests present in the APK's bundled Python modules. It is an integration note, not a claim that every provider permits unlimited polling. Do not add login-only, booking-submit, captcha, or access-control-bypass behavior.
+This file records first-party schedule request shapes found in the user-supplied Android v3 APK. It does not claim unlimited polling rights. Collect only public schedule data within the observed source flow; do not add login-only, booking-submit, captcha, or access-control-bypass behavior.
 
-## Confirmed in this APK
+## Confirmed request shapes
 
-| Provider | First-party request | Method | Scope |
+| Provider | Request | Method | Scope |
 |---|---|---:|---|
-| Sunsang24 | `https://api.sunsang24.com/ship/schedule_fleet_list/{entry_id}/{YYYYMM}?simple=&possible=&eyyyymm=` | GET | Public monthly schedule JSON for a verified fleet/boat ID. Response rows identify boat and date; published seat counts/status must be explicitly present. |
-| TheFishing | `https://thefishing.kr/reservation/list.php?uid={product_uid}` | GET | Public calendar bootstrap. The app checks the page's boat name, product UID and the site's own calendar UID. |
-| TheFishing | `https://thefishing.kr/reservation/list.view.view.1.ajax.new.php` | POST | The same-origin monthly calendar request observed in the page script. Form: `date6=YYYYMM&st_uid={page_calendar_uid}&pa_uid={product_uid}`. |
+| Sunsang24 | `https://api.sunsang24.com/ship/schedule_fleet_list/{entry_id}/{YYYYMM}?simple=&possible=&eyyyymm=` | GET | Public monthly schedule JSON for a verified fleet/boat entry. |
+| TheFishing | `https://thefishing.kr/reservation/list.php?uid={product_uid}` | GET | Public calendar bootstrap; boat name and the page's own calendar UID must be read from the page. |
+| TheFishing | `https://thefishing.kr/reservation/list.view.view.1.ajax.new.php` | POST | Same-origin monthly calendar request observed in the page script: `date6=YYYYMM&st_uid={page_calendar_uid}&pa_uid={product_uid}`. |
 
-### Constraints
+## Collection currently enabled
 
-- Keep requests on HTTPS and the exact first-party hosts/routes above. Use only boat IDs supplied by an authorized/public catalogue or explicit configuration; do not enumerate guessed IDs.
-- The TheFishing `st_uid` is read from the public bootstrap page; it must not be guessed.
-- The APK's parser ignores private reservation-person subtrees and treats ambiguous/missing status or seat counts as unknown.
-- Stop polling a provider on HTTP 429, challenge/verification pages, or access-denied responses. Do not rotate identities, spoof browser headers to get around a block, or retry aggressively.
-- The APK's own scheduler uses a 100-request execution budget, a per-platform daily cap of 1,200 requests, and 1–2 second minimum request spacing depending on its configured profile. These are app-side safeguards, not published provider quotas. A GitHub Actions run every 10 minutes must therefore process a small rotating subset; it cannot safely refresh all 1,006 catalogue entries every run.
-- The submitted APK contains adapters for Sunsang24 and TheFishing only. It contains no ClubSea adapter, so this APK does not provide evidence for a ClubSea API.
+The GitHub Actions collector currently calls only the three configured Sunsang24 fleet entries in `source_registry.json` (entry IDs 2455, 698, and 1634), for the current and next calendar months. It checks that each returned boat ID and name match the explicit registry and keeps only rows whose public species label identifies 쭈꾸미/주꾸미 or 갑오징어. A seat count is recorded only when the source explicitly exposes it.
 
-## Repository status
+The workflow runs every 30 minutes, with at least two seconds between requests. The current and next month are refreshed with six small monthly requests per run. It stops on access denial, rate limit, non-JSON response, identity mismatch, or unexpected response structure; failed runs do not replace the previous snapshot.
 
-The existing `scraper.py` was a placeholder with guessed selectors. This inventory captures the verified request shapes so a later crawler can be built against the source-page flow and a deliberately limited, authorized provider/boat list. No credentials or reservation data are included here.
+## Limits and safety
+
+- Use HTTPS, exact first-party hosts and routes, and IDs in the explicit registry. Do not guess or enumerate IDs.
+- The TheFishing calendar UID must be read from its public bootstrap page. No TheFishing or ClubSea collector is enabled yet.
+- Missing or ambiguous status/count remains unknown; it must never be inferred as available or sold out.
+- Stop on HTTP 401/403/429/503, challenges, or access-denied responses. Do not rotate identities, spoof browser headers to work around a block, or retry aggressively.
+- The submitted APK contains no ClubSea adapter. Its presence in the app's catalog is not evidence of an API.
+- The private repository's raw file is not anonymously readable by the Android app. Publishing the JSON feed requires a public static endpoint; this exposes the schedule snapshot only, not the private source repository.
+
+No credentials or reservation-person data are included.

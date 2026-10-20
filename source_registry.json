@@ -189,6 +189,114 @@
           "port": "왜목항"
         }
       }
+    },
+    {
+      "entry_id": "1503",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "1503": {
+          "name": "갈매기호",
+          "region": "전남",
+          "port": "신기항"
+        }
+      }
+    },
+    {
+      "entry_id": "1801",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "1801": {
+          "name": "가디언호",
+          "region": "충남",
+          "port": "대천항"
+        }
+      }
+    },
+    {
+      "entry_id": "1861",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "1861": {
+          "name": "가디언호",
+          "region": "충남",
+          "port": "무창포항"
+        }
+      }
+    },
+    {
+      "entry_id": "2002",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "2002": {
+          "name": "골드비너스호",
+          "region": "전남",
+          "port": "마량항"
+        }
+      }
+    },
+    {
+      "entry_id": "2207",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "2207": {
+          "name": "강태공호",
+          "region": "전남",
+          "port": "목포북항"
+        }
+      }
+    },
+    {
+      "entry_id": "2307",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "2307": {
+          "name": "고고(1호)",
+          "region": "전남",
+          "port": "안포항"
+        }
+      }
+    },
+    {
+      "entry_id": "2483",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "2483": {
+          "name": "그레이스호",
+          "region": "충남",
+          "port": "대야도항"
+        }
+      }
+    },
+    {
+      "entry_id": "727",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "727": {
+          "name": "강프로호",
+          "region": "전북",
+          "port": "비응항"
+        }
+      }
+    },
+    {
+      "entry_id": "917",
+      "host": "www.sunsang24.com",
+      "booking_url_template": "https://www.sunsang24.com/ship/schedule?ship_no={ship_id}",
+      "ships": {
+        "917": {
+          "name": "글램핑1호",
+          "region": "충남",
+          "port": "천리포항"
+        }
+      }
     }
   ]
 }

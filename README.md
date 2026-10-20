@@ -1,16 +1,17 @@
-# Public schedule data collector
+# fishing-scraper
 
-This repository keeps a small, read-only snapshot of publicly visible squid and cuttlefish schedules. GitHub Actions runs every 30 minutes and commits a new `fishing_data.json` only when the snapshot changes. A failed or blocked fetch leaves the last good file untouched.
+This private repository keeps a read-only snapshot of publicly visible squid and cuttlefish schedules. GitHub Actions collects the configured Sunsang24 schedules every 30 minutes and commits `fishing_data.json` after each successful refresh.
+
+## Android app connection
+
+The repository remains private. The app reads the snapshot through GitHub's authenticated Contents API. In the app, choose **연결** and enter a fine-grained token restricted to this repository with **Contents: Read-only** permission. The token is encrypted with Android Keystore on the device; do not paste it into chat, source code, or GitHub files. The app checks for a newer snapshot every two minutes while open and refreshes immediately when opened.
 
 ## Currently collected
 
-- Sunsang24: three explicitly verified public fleet entries, refreshed for the current and next calendar month. The configured entries and exact boat identities are in `source_registry.json`.
-- The collector filters for public schedule rows explicitly labeled for 쭈꾸미/주꾸미 or 갑오징어. It records only a seat count that the source explicitly exposes.
-- ClubSea and TheFishing are not active collectors yet. Their endpoint/request shapes are documented in `API_SOURCES.md`; additional integration requires a verified public boat list and a permitted request scope.
-
-## Read the saved data
-
-The Android app reads the latest JSON snapshot and refreshes it while open. The repository is private, so the app cannot anonymously read its raw GitHub file. To enable the app feed, publish only `fishing_data.json` using a public static endpoint (for example, GitHub Pages); this makes schedule/seat data public but does not expose the repository source. Do not put a GitHub token in the APK.
+- Sunsang24: three explicitly verified public fleet entries refreshed for the current and next calendar month. The exact boat IDs and names are in `source_registry.json`.
+- Only public rows labeled 쭈꾸미/주꾸미 or 갑오징어 are kept.
+- Seat counts are stored only if the provider explicitly exposes them.
+- TheFishing and ClubSea are not active collectors; their request-shape notes are in `API_SOURCES.md`.
 
 ## Run collection manually
 
@@ -18,14 +19,14 @@ The Android app reads the latest JSON snapshot and refreshes it while open. The 
 2. Select **Update fishing data**.
 3. Choose **Run workflow**.
 
-The scheduled run starts at minute 00 and 30 of each hour (GitHub may start a scheduled run a few minutes later).
+Scheduled runs are configured for minute 00 and 30 of each hour. GitHub may start them a few minutes later.
 
 ## Files
 
-- `scraper.py`: public Sunsang24 collector; stops on HTTP denial/rate limits or unexpected response shapes.
+- `scraper.py`: limited public Sunsang24 collector; stops on access denial, rate limits, or unexpected response shapes.
 - `source_registry.json`: explicit provider, fleet, and boat allowlist.
-- `fishing_data.json`: last successful snapshot.
-- `.github/workflows/cron.yml`: 30-minute collection schedule and commit.
-- `API_SOURCES.md`: inspected endpoint notes and safety constraints.
+- `fishing_data.json`: latest successful snapshot.
+- `.github/workflows/cron.yml`: 30-minute collection schedule.
+- `API_SOURCES.md`: inspected endpoint notes and constraints.
 
-The collector does not log in, submit bookings, bypass access controls, enumerate guessed IDs, or retry aggressively.
+The collector does not log in, submit bookings, bypass access controls, or guess IDs. A failed collection leaves the last good snapshot untouched.

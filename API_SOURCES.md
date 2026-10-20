@@ -23,6 +23,6 @@ The workflow runs every 30 minutes, with at least two seconds between requests. 
 - Missing or ambiguous status/count remains unknown; it must never be inferred as available or sold out.
 - Stop on HTTP 401/403/429/503, challenges, or access-denied responses. Do not rotate identities, spoof browser headers to work around a block, or retry aggressively.
 - The submitted APK contains no ClubSea adapter. Its presence in the app's catalog is not evidence of an API.
-- The private repository's raw file is not anonymously readable by the Android app. Publishing the JSON feed requires a public static endpoint; this exposes the schedule snapshot only, not the private source repository.
+- The repository stays private. The Android app must read the JSON through GitHub's authenticated Contents API using a fine-grained, repository-scoped Contents: Read-only token stored encrypted with Android Keystore. Never embed the token in source code or commit it.
 
 No credentials or reservation-person data are included.

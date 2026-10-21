@@ -1,0 +1,16 @@
+{
+  "daysAhead": 14,
+  "nearDays": 2,
+  "species": [
+    "주꾸미",
+    "갑오징어"
+  ],
+  "outputFile": "fishing_data.json",
+  "registryFile": "data/thefishing-ships.json",
+  "concurrency": 8,
+  "sunsangThrottleMs": 4500,
+  "sources": {
+    "sunsang": true,
+    "thefishing": true
+  }
+}

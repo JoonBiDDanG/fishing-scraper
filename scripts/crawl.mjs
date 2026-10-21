@@ -95,7 +95,7 @@ function normalizeRow(row) {
     date: row.date,
     region: row.region ?? "",
     port: row.port ?? "",
-    departure: row.departure ?? null,
+    departure: row.departure || null,
     remaining: Number.isInteger(row.remaining) ? row.remaining : null,
     status: row.status ?? "unknown",
     url: row.url ?? "",

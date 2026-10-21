@@ -3,10 +3,10 @@
 `app-debug.apk`(패키지 `com.example.squidfishing`)가 읽는 **`fishing_data.json`** 을
 GitHub Actions 에서 주기적으로 만드는 저장소입니다.
 
-앱은 아래 주소를 하드코딩해서 읽습니다.
+앱은 공개 스냅샷 주소를 직접 읽습니다. 공개 저장소이므로 앱에 GitHub 토큰을 입력할 필요가 없습니다.
 
 ```
-https://api.github.com/repos/JoonBiDDanG/fishing-scraper/contents/fishing_data.json?ref=main
+https://raw.githubusercontent.com/JoonBiDDanG/fishing-scraper/main/fishing_data.json
 ```
 
 | 항목 | 값 |
@@ -14,7 +14,6 @@ https://api.github.com/repos/JoonBiDDanG/fishing-scraper/contents/fishing_data.j
 | 저장소 | `JoonBiDDanG/fishing-scraper` |
 | 브랜치 | `main` |
 | 파일 | 저장소 루트의 `fishing_data.json` |
-| 앱 설정 | `github_pat_...` 토큰 (Contents: Read) |
 
 ---
 
@@ -43,17 +42,7 @@ https://api.github.com/repos/JoonBiDDanG/fishing-scraper/contents/fishing_data.j
    **Read and write permissions** 를 선택합니다.
 3. **Actions** 탭 → `낚시 일정 스냅샷` → **Run workflow** 로 한 번 실행합니다.
 4. 성공하면 `fishing_data.json` 과 `data/thefishing-ships.json` 이 커밋됩니다.
-5. 앱에서 **연결** → GitHub PAT 입력.
-
-### PAT 만들기
-
-- GitHub → Settings → Developer settings → **Fine-grained personal access tokens**
-- Repository access: **Only select repositories** → `JoonBiDDanG/fishing-scraper`
-- Permissions → Repository permissions → **Contents: Read-only**
-- `github_pat_...` 값을 앱에 입력
-
-> 앱은 `github_pat_` 로 시작하고 30자 이상인 토큰만 받습니다.
-> Classic 토큰(`ghp_...`)은 거부됩니다.
+5. 새 낚시가자 APK를 설치하면 공개 일정이 자동으로 연결됩니다. 앱에 토큰을 입력하지 않아도 됩니다.
 
 ---
 
@@ -112,7 +101,7 @@ scripts/crawl.mjs
 ### 용량
 
 실측 기준 전체 14일 스냅샷은 약 **3.8MB**(10,400건)입니다.
-앱은 화면이 켜진 동안 120초마다 파일을 다시 받으므로, 데이터를 아끼려면 `daysAhead` 를 줄이세요.
+앱은 화면이 켜져 있는 동안 5분마다 파일을 다시 받으므로, 데이터를 아끼려면 `daysAhead` 를 줄이세요.
 
 | daysAhead | 대략 |
 | --- | --- |
@@ -201,7 +190,7 @@ $env:FULL_REFRESH='1'; node scripts/crawl.mjs
 | --- | --- | --- |
 | `405 Human Verification` | 선상24 WAF 캡차 | 1시간 정도 기다린 뒤 재실행. `sunsangThrottleMs` 를 5000 이상으로 |
 | 선상24만 0건, 더피싱은 정상 | WAF 차단 | 기존 선상24 데이터가 유지됨. 다음 실행에서 재시도 |
-| 앱 "토큰을 확인해 주세요" | PAT 만료/권한 | Contents: Read 재확인 |
+| 앱에서 일정을 못 불러옴 | 공개 스냅샷 주소 또는 인터넷 연결 문제 | 저장소가 공개 상태인지, `fishing_data.json`에 `schedules`가 있는지 확인 |
 | 앱 "파일 형식이 올바르지 않습니다" | `schedules` 없음 | `node scripts/verify.mjs` |
 | 커밋이 안 됨 | Actions 권한 | Settings → Actions → Read and write |
 

@@ -19,6 +19,7 @@ import process from "node:process";
 
 import { crawlSunsang } from "./sources/sunsang.mjs";
 import { crawlThefishing, loadRegistry } from "./sources/thefishing.mjs";
+import { crawlFallbacks } from "./sources/fallbacks.mjs";
 
 const ROOT = process.cwd();
 const CONFIG_PATH = path.join(ROOT, "config.json");
@@ -95,7 +96,7 @@ function normalizeRow(row) {
     date: row.date,
     region: row.region ?? "",
     port: row.port ?? "",
-    departure: row.departure || null,
+    departure: row.departure ?? null,
     remaining: Number.isInteger(row.remaining) ? row.remaining : null,
     status: row.status ?? "unknown",
     url: row.url ?? "",
@@ -103,6 +104,22 @@ function normalizeRow(row) {
     latitude: Number.isFinite(row.latitude) ? row.latitude : null,
     longitude: Number.isFinite(row.longitude) ? row.longitude : null,
   };
+}
+
+function providerPriority(source = "") {
+  if (source.includes("선상24")) return 4;
+  if (source.includes("더피싱")) return 3;
+  if (source.toLowerCase().includes("ipzil") || source.includes("입질")) return 2;
+  if (source.toLowerCase().includes("naksigo") || source.includes("낚시고")) return 1;
+  return 0;
+}
+
+function canonicalKey(row) {
+  // Missing departure times are not safe to collapse across providers.
+  if (!row.departure) return `id:${row.id}`;
+  const boat = String(row.boat ?? "").replace(/\s+/g, "").toLowerCase();
+  const port = String(row.port ?? "").replace(/\s+/g, "").toLowerCase();
+  return `${row.date}|${boat}|${port}|${row.departure}`;
 }
 
 function mergeRows(oldRows, newRows, coverage, today, lastDate) {
@@ -123,15 +140,43 @@ function mergeRows(oldRows, newRows, coverage, today, lastDate) {
       continue;
     }
 
+    if (row.source === "입질닷컴" && coverage.fallbacks.ipzil.has(row.date)) continue;
+    if (row.source === "낚시고" && coverage.fallbacks.naksigo.has(row.date)) continue;
+
     kept.push(row);
   }
 
   const byId = new Map();
-  for (const row of kept) byId.set(row.id, normalizeRow(row));
-  for (const row of newRows) byId.set(row.id, normalizeRow(row));
+  for (const row of [...kept, ...newRows]) {
+    const normalized = normalizeRow(row);
+    const current = byId.get(normalized.id);
+    if (!current || providerPriority(normalized.source) > providerPriority(current.source) ||
+        (providerPriority(normalized.source) === providerPriority(current.source) &&
+          Date.parse(normalized.checkedAt ?? 0) >= Date.parse(current.checkedAt ?? 0))) {
+      byId.set(normalized.id, normalized);
+    }
+  }
 
-  return [...byId.values()]
-    .filter(isValidRow)
+  const byDeparture = new Map();
+  for (const row of byId.values()) {
+    if (!isValidRow(row)) continue;
+    const key = canonicalKey(row);
+    const current = byDeparture.get(key);
+    if (!current || providerPriority(row.source) > providerPriority(current.source) ||
+        (providerPriority(row.source) === providerPriority(current.source) &&
+          Date.parse(row.checkedAt ?? 0) > Date.parse(current.checkedAt ?? 0))) {
+      byDeparture.set(key, current ? {
+        ...current,
+        ...row,
+        speciesText: row.speciesText || current.speciesText,
+        remaining: row.remaining ?? current.remaining,
+        latitude: row.latitude ?? current.latitude,
+        longitude: row.longitude ?? current.longitude,
+      } : row);
+    }
+  }
+
+  return [...byDeparture.values()]
     .sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
@@ -149,10 +194,12 @@ async function main() {
 
   const today = kstDate();
   const lastDate = addDays(today, cfg.daysAhead);
+  const now = new Date();
+  const isDailyFullWindow = now.getUTCHours() === 18 && now.getUTCMinutes() < 30;
   const isFull =
     process.env.FULL_REFRESH === "1" ||
     process.env.FULL_REFRESH === "true" ||
-    new Date().getUTCHours() === 18 ||
+    isDailyFullWindow ||
     previous.length === 0;
 
   const rangeEnd = isFull ? lastDate : addDays(today, Math.min(cfg.nearDays, cfg.daysAhead));
@@ -164,8 +211,7 @@ async function main() {
   );
 
   const runSunsang = cfg.sources.sunsang;
-  const runThefishing =
-    cfg.sources.thefishing && (isFull || new Date().getUTCHours() % 6 === 0);
+  const runThefishing = cfg.sources.thefishing;
 
   const emptyResult = { rows: [], covered: new Set(), failed: new Set() };
 
@@ -186,7 +232,7 @@ async function main() {
               file: path.join(ROOT, cfg.registryFile),
               configSpecies: cfg.species,
               concurrency: Math.min(5, cfg.concurrency),
-              maxAgeDays: 3,
+              maxAgeDays: 1,
             });
             return await crawlThefishing(ships, dates, {
               configSpecies: cfg.species,
@@ -206,7 +252,10 @@ async function main() {
       (thefishing.failed?.size ? ` · 실패 ${thefishing.failed.size}척` : ""),
   );
 
-  const newRows = [...(sunsang.rows ?? []), ...(thefishing.rows ?? [])].filter(isValidRow);
+  const fallbacks = await crawlFallbacks(dates);
+  log(`[보충 일정] ${fallbacks.rows.length}건 · 입질닷컴 ${fallbacks.covered.ipzil.size}일 · 낚시고 ${fallbacks.covered.naksigo.size}일`);
+
+  const newRows = [...(sunsang.rows ?? []), ...(thefishing.rows ?? []), ...fallbacks.rows].filter(isValidRow);
   if (!newRows.length && previous.length) {
     log("새로 수집된 일정이 없습니다. 기존 스냅샷을 유지합니다.");
     return;
@@ -216,6 +265,7 @@ async function main() {
     sunsang: sunsang.covered ?? new Set(),
     thefishing: thefishing.covered ?? new Set(),
     thefishingFailed: thefishing.failed ?? new Set(),
+    fallbacks: fallbacks.covered,
   };
 
   const merged = mergeRows(previous, newRows, coverage, today, lastDate);
@@ -254,3 +304,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+

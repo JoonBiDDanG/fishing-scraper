@@ -58,11 +58,19 @@ function parseArea(pathText) {
   return { region, port, district: /(시|군|구)$/.test(district) ? district : "" };
 }
 
+const SPECIES_ALIASES = new Map([
+  ["주꾸미", /주꾸미|쭈꾸미/], ["갑오징어", /갑오징어/], ["우럭", /우럭|조피볼락/],
+  ["광어", /광어|넙치/], ["문어", /문어|돌문어/], ["갈치", /갈치/], ["참돔", /참돔/],
+  ["백조기", /백조기|보구치/], ["농어", /농어/], ["방어", /방어/], ["부시리", /부시리/],
+  ["오징어", /(?<!무늬)오징어|살오징어/], ["한치", /한치|창꼴뚜기/], ["열기", /열기|불볼락/],
+  ["볼락", /볼락/], ["감성돔", /감성돔/], ["다잡아·생활낚시", /다잡아|생활낚시|종합낚시/],
+  ["무늬오징어", /무늬오징어/], ["삼치", /삼치/], ["대구", /대구/], ["붉바리", /붉바리/],
+  ["돌돔", /돌돔/], ["전갱이", /전갱이|아지/], ["민어", /민어/],
+]);
+
 export function detectSpecies(text, configSpecies) {
-  const value = String(text ?? "");
-  const found = new Set();
-  if (/주꾸미|쭈꾸미/.test(value)) found.add("주꾸미");
-  if (/갑오징어/.test(value)) found.add("갑오징어");
+  const value = String(text ?? "").replace(/\s+/g, "");
+  const found = new Set(configSpecies.filter((species) => SPECIES_ALIASES.get(species)?.test(value)));
   if (/쭈\s*[,/&·]?\s*갑|쭈갑/.test(value)) {
     found.add("주꾸미");
     found.add("갑오징어");
@@ -84,7 +92,7 @@ function parseListPage(html, configSpecies, ships) {
     const capacityText = stripTags(/class="re_list_price">([\s\S]*?)<\/div>/.exec(block)?.[1] ?? "");
 
     const species = detectSpecies(fishText, configSpecies);
-    if (!name || !/[가-힣A-Za-z0-9]/.test(name) || !species.length) return;
+    if (!name || !/[가-힣A-Za-z0-9]/.test(name)) return;
 
     const area = parseArea(areaText);
     const capacity = /(\d+)\s*인승/.exec(capacityText)?.[1];
@@ -106,7 +114,7 @@ export async function crawlRegistry(configSpecies, options = {}) {
   const concurrency = options.concurrency ?? 5;
   const firstHtml = await fetchText(`${BASE}${LIST_PATH}?page=1`, { headers: HEADERS, timeoutMs: 30000 });
   const maxPage = Math.min(
-    60,
+    1000,
     Math.max(1, ...([...firstHtml.matchAll(/list\.php\?page=(\d+)/g)].map((m) => Number(m[1])))),
   );
 
@@ -193,17 +201,16 @@ function parseCalendar(html, ship, wantedDates, configSpecies) {
     const remainText = /남은인원\s*<span class="num">\s*(\d+)\s*<\/span>/.exec(cell)?.[1];
     const soldOut = cell.includes("예약완료");
     const bookable = cell.includes("예약하기");
-    const phoneInquiry = /전화\s*(?:문의|예약|요망)|유선\s*예약/i.test(stripTags(cell));
-    if (!soldOut && !bookable && !phoneInquiry && remainText === undefined) continue;
+    if (!soldOut && !bookable && remainText === undefined) continue;
 
-    const status = soldOut ? "full" : phoneInquiry ? "phone" : bookable ? "available" : "unknown";
-    const remaining = phoneInquiry ? null : remainText !== undefined ? Number(remainText) : status === "full" ? 0 : null;
+    const status = soldOut ? "full" : bookable ? "available" : "unknown";
+    const remaining = remainText !== undefined ? Number(remainText) : status === "full" ? 0 : null;
 
     const scheduleBlock = /<ul class="schedule2">([\s\S]*?)<\/ul>/i.exec(cell)?.[1] ?? "";
     const scheduleText = stripTags(scheduleBlock);
     const species = detectSpecies(scheduleText, configSpecies);
     const finalSpecies = species.length ? species : ship.species;
-    if (!finalSpecies.length) continue;
+    const speciesText = finalSpecies.length ? finalSpecies.join(",") : scheduleText.trim() || ship.fishText || "어종 확인 필요";
 
     const bucket = byDate.get(date) ?? new Map();
     const slot = time ?? "";
@@ -213,7 +220,7 @@ function parseCalendar(html, ship, wantedDates, configSpecies) {
         boat: ship.name,
         boatId: `tf-${ship.uid}`,
         source: "더피싱",
-        speciesText: finalSpecies.join(","),
+        speciesText,
         date,
         region: ship.region,
         port: ship.port,
@@ -283,3 +290,4 @@ export async function crawlThefishing(ships, dates, options = {}) {
   const covered = failed.size > ships.length * 0.5 ? new Set() : new Set(dates);
   return { rows, failed, covered };
 }
+

@@ -17,23 +17,21 @@ function hhmm(value) {
 
 export function mapStatus(name) {
   const text = String(name ?? "");
-  if (text.includes("전화")) return "phone";
   if (text.includes("예약가능")) return "available";
   if (text.includes("예약마감")) return "full";
   if (text.includes("출항취소") || text.includes("취소")) return "cancelled";
   if (text.includes("휴항") || text.includes("조업")) return "closed";
+  if (text.includes("전화")) return "available";
   return "unknown";
 }
 
-function toRow(item, wantedSpecies) {
+function toRow(item) {
   const ship = item?.ship ?? {};
   if (!ship.no || !item?.schedule_no || !item?.sdate) return null;
 
-  const rawSpecies = String(item.fish_type ?? "");
-  const matched = wantedSpecies.filter((species) => rawSpecies.includes(species));
-  const speciesText = matched.length ? matched.join(",") : wantedSpecies[0] ?? "";
-
-  const status = mapStatus(item.schedule_status_name);
+  // Request the unfiltered public list and preserve its actual species label.
+  // Guessing a requested species here used to mislabel other trips.
+  const speciesText = String(item.fish_type ?? "").trim() || "어종 확인 필요";
 
   return {
     id: `sa:${item.schedule_no}`,
@@ -45,12 +43,10 @@ function toRow(item, wantedSpecies) {
     region: String(ship.area_main ?? "").trim(),
     port: String(item.port_name ?? ship.area_sub ?? "").trim(),
     departure: hhmm(item.stime),
-    remaining: status === "phone"
-      ? null
-      : Number.isInteger(item.remain_embarkation_num)
-        ? item.remain_embarkation_num
-        : null,
-    status,
+    remaining: Number.isInteger(item.remain_embarkation_num)
+      ? item.remain_embarkation_num
+      : null,
+    status: mapStatus(item.schedule_status_name),
     url: `https://www.sunsang24.com/ship/schedule?ship_no=${ship.no}`,
     checkedAt: new Date().toISOString(),
     latitude: Number.isFinite(ship.lat) ? ship.lat : null,
@@ -70,16 +66,14 @@ async function throttle() {
   if (wait > 0) await sleep(wait);
 }
 
-async function fetchPage(date, species, page) {
+async function fetchPage(date, page) {
   await throttle();
   state.requests += 1;
   if (state.requests % 25 === 0) {
     console.log(`[선상24] 요청 ${state.requests}회 진행 중`);
   }
 
-  const url =
-    `${LIST_URL}?type=general&sdate=${encodeURIComponent(date)}` +
-    `&page=${page}&fish=${encodeURIComponent(species)}`;
+  const url = `${LIST_URL}?type=general&sdate=${encodeURIComponent(date)}&page=${page}`;
   try {
     return await fetchJson(url, { headers: HEADERS, timeoutMs: 25000, retries: 2 });
   } catch (error) {
@@ -88,24 +82,28 @@ async function fetchPage(date, species, page) {
   }
 }
 
-async function crawlOne(date, species, concurrency) {
-  const first = await fetchPage(date, species, 1);
+async function crawlOne(date, concurrency) {
+  const first = await fetchPage(date, 1);
   const total = Number(first?.total ?? 0);
   const firstList = Array.isArray(first?.list) ? first.list : [];
   if (!firstList.length) return [];
 
-  let pageCount = total > 0 ? Math.ceil(total / PAGE_SIZE) : firstList.length >= PAGE_SIZE ? 40 : 1;
-  pageCount = Math.min(pageCount, 200);
-
-  const pages = [];
-  for (let page = 2; page <= pageCount; page += 1) pages.push(page);
-
-  const rest = await mapLimit(pages, concurrency, (page) => fetchPage(date, species, page));
-  const items = [...firstList, ...rest.flatMap((body) => (Array.isArray(body?.list) ? body.list : []))];
+  // Do not silently truncate at an arbitrary number of pages. The API's total is
+  // authoritative; if it is absent, continue until the provider returns a short page.
+  const items = [...firstList];
+  let page = 2;
+  const expectedPages = total > 0 ? Math.ceil(total / PAGE_SIZE) : Number.POSITIVE_INFINITY;
+  while (page <= expectedPages && page <= 1000) {
+    const body = await fetchPage(date, page);
+    const rows = Array.isArray(body?.list) ? body.list : [];
+    items.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    page += 1;
+  }
 
   const rows = [];
   for (const item of items) {
-    const row = toRow(item, [species]);
+    const row = toRow(item);
     if (row) rows.push(row);
   }
   return rows;
@@ -116,21 +114,18 @@ async function crawlOne(date, species, concurrency) {
  * @returns {{rows: object[], covered: Set<string>}}
  */
 export async function crawlSunsang(dates, speciesList, options = {}) {
-  const concurrency = options.concurrency ?? 8;
-  const species = speciesList.length ? speciesList : ["주꾸미"];
-
-  const tasks = [];
-  for (const date of dates) for (const name of species) tasks.push({ date, name });
+  // Requests are deliberately serial: this public API actively rate-limits bursts.
+  const tasks = dates.map((date) => ({ date }));
 
   state.blocked = false;
   state.nextAt = 0;
   state.requests = 0;
   state.intervalMs = options.throttleMs ?? 3200;
 
-  // WAF 회피를 위해 날짜·어종 작업을 직렬로 처리한다.
+  // WAF 회피를 위해 날짜 및 페이지 작업을 직렬로 처리한다.
   const results = await mapLimit(tasks, 1, async (task) => {
     try {
-      const rows = await crawlOne(task.date, task.name, 1);
+      const rows = await crawlOne(task.date, 1);
       return { ...task, rows };
     } catch (error) {
       return { ...task, error };
@@ -141,7 +136,7 @@ export async function crawlSunsang(dates, speciesList, options = {}) {
   const byDate = new Map();
   for (const result of results) {
     if (result.error) {
-      console.warn(`[선상24] ${result.date} ${result.name} 실패: ${result.error.message}`);
+      console.warn(`[선상24] ${result.date} 실패: ${result.error.message}`);
       continue;
     }
     for (const row of result.rows) {
@@ -155,17 +150,13 @@ export async function crawlSunsang(dates, speciesList, options = {}) {
         previous.speciesText = [...species].join(",");
       }
     }
-    if (!byDate.has(result.date)) byDate.set(result.date, new Set());
-    byDate.get(result.date).add(result.name);
+    byDate.set(result.date, true);
   }
 
   const rows = [...merged.values()];
 
-  // 모든 어종 쿼리가 성공한 날짜만 "교체 완료"로 본다.
-  const covered = new Set();
-  for (const [date, names] of byDate) {
-    if (species.every((name) => names.has(name))) covered.add(date);
-  }
+  const covered = new Set([...byDate.keys()]);
 
   return { rows, covered };
 }
+

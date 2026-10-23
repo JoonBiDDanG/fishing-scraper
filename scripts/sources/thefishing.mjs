@@ -142,25 +142,34 @@ export async function loadRegistry(options) {
     logger = console,
   } = options;
 
-  if (!force && existsSync(file)) {
+  let cached = null;
+  if (existsSync(file)) {
     try {
-      const saved = JSON.parse(await readFile(file, "utf8"));
-      const ageMs = Date.now() - Date.parse(saved.fetchedAt ?? 0);
-      if (Array.isArray(saved.ships) && saved.ships.length && ageMs < maxAgeDays * 86400000) {
-        logger.log(`[더피싱] 저장된 선박 목록 사용 (${saved.ships.length}척)`);
-        return saved.ships;
+      cached = JSON.parse(await readFile(file, "utf8"));
+      const ageMs = Date.now() - Date.parse(cached.fetchedAt ?? 0);
+      if (!force && Array.isArray(cached.ships) && cached.ships.length && ageMs < maxAgeDays * 86400000) {
+        logger.log(`[더피싱] 저장된 선박 목록 사용 (${cached.ships.length}척)`);
+        return cached.ships;
       }
     } catch {
-      // 손상된 캐시는 다시 만든다.
+      cached = null;
     }
   }
 
   logger.log("[더피싱] 선박 목록 수집");
-  const ships = await crawlRegistry(configSpecies, { concurrency });
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify({ fetchedAt: new Date().toISOString(), ships }), "utf8");
-  logger.log(`[더피싱] 선박 ${ships.length}척 저장`);
-  return ships;
+  try {
+    const ships = await crawlRegistry(configSpecies, { concurrency });
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify({ fetchedAt: new Date().toISOString(), ships }), "utf8");
+    logger.log(`[더피싱] 선박 ${ships.length}척 저장`);
+    return ships;
+  } catch (error) {
+    if (Array.isArray(cached?.ships) && cached.ships.length) {
+      logger.warn(`[더피싱] 최신 목록 조회 실패, 저장된 목록 ${cached.ships.length}척으로 일정 조회를 계속합니다: ${error.message}`);
+      return cached.ships;
+    }
+    throw error;
+  }
 }
 
 function monthOf(dateString) {

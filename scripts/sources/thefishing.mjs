@@ -78,6 +78,11 @@ export function detectSpecies(text, configSpecies) {
   return configSpecies.filter((species) => found.has(species));
 }
 
+function registryPageUrl(page) {
+  const params = new URLSearchParams([["sf[]", "1"], ["page", String(page)]]);
+  return BASE + LIST_PATH + "?" + params.toString();
+}
+
 function parseListPage(html, configSpecies, ships) {
   const matches = [...html.matchAll(/<li>\s*<a href="https:\/\/thefishing\.kr\/reservation\/list\.php\?uid=(\d+)"/g)];
   matches.forEach((match, index) => {
@@ -112,11 +117,9 @@ function parseListPage(html, configSpecies, ships) {
 
 export async function crawlRegistry(configSpecies, options = {}) {
   const concurrency = options.concurrency ?? 5;
-  const firstHtml = await fetchText(`${BASE}${LIST_PATH}?page=1`, { headers: HEADERS, timeoutMs: 30000 });
-  const maxPage = Math.min(
-    1000,
-    Math.max(1, ...([...firstHtml.matchAll(/list\.php\?page=(\d+)/g)].map((m) => Number(m[1])))),
-  );
+  const firstHtml = await fetchText(registryPageUrl(1), { headers: HEADERS, timeoutMs: 30000 });
+  const pageNumbers = [...firstHtml.matchAll(/list\\.php\\?[^\"'#]*(?:&amp;|&|\\?)page=(\\d+)/g)].map((match) => Number(match[1]));
+  const maxPage = Math.max(1, ...pageNumbers);
 
   const ships = new Map();
   parseListPage(firstHtml, configSpecies, ships);
@@ -126,7 +129,7 @@ export async function crawlRegistry(configSpecies, options = {}) {
 
   const bodies = await mapLimit(pages, concurrency, async (page) => {
     try {
-      const html = await fetchText(`${BASE}${LIST_PATH}?page=${page}`, {
+      const html = await fetchText(registryPageUrl(page), {
         headers: HEADERS,
         timeoutMs: 30000,
         retries: 5,

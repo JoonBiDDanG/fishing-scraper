@@ -124,12 +124,33 @@ export async function crawlRegistry(configSpecies, options = {}) {
   const pages = [];
   for (let page = 2; page <= maxPage; page += 1) pages.push(page);
 
-  const bodies = await mapLimit(pages, concurrency, (page) =>
-    fetchText(`${BASE}${LIST_PATH}?page=${page}`, { headers: HEADERS, timeoutMs: 30000 }),
-  );
-  for (const html of bodies) parseListPage(html, configSpecies, ships);
+  const bodies = await mapLimit(pages, concurrency, async (page) => {
+    try {
+      const html = await fetchText(`${BASE}${LIST_PATH}?page=${page}`, {
+        headers: HEADERS,
+        timeoutMs: 30000,
+        retries: 5,
+      });
+      return { page, html };
+    } catch (error) {
+      return { page, error };
+    }
+  });
 
-  return [...ships.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  const failedPages = bodies.filter((result) => result.error);
+  for (const result of bodies) {
+    if (!result.error) parseListPage(result.html, configSpecies, ships);
+  }
+  if (failedPages.length) {
+    console.warn(`[더피싱] ${failedPages.length}/${pages.length} 목록 페이지 실패: ${failedPages
+      .slice(0, 8)
+      .map((result) => result.page)
+      .join(", ")}`);
+  }
+
+  const result = [...ships.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  result.partial = failedPages.length > 0;
+  return result;
 }
 
 export async function loadRegistry(options) {
@@ -158,7 +179,14 @@ export async function loadRegistry(options) {
 
   logger.log("[더피싱] 선박 목록 수집");
   try {
-    const ships = await crawlRegistry(configSpecies, { concurrency });
+    const crawled = await crawlRegistry(configSpecies, { concurrency });
+    let ships = crawled;
+    if (crawled.partial && Array.isArray(cached?.ships)) {
+      const merged = new Map(cached.ships.map((ship) => [String(ship.uid), ship]));
+      for (const ship of crawled) merged.set(String(ship.uid), ship);
+      ships = [...merged.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      logger.warn(`[더피싱] 일부 페이지 누락으로 기존 선박 목록을 합쳐 ${ships.length}척을 유지합니다.`);
+    }
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify({ fetchedAt: new Date().toISOString(), ships }), "utf8");
     logger.log(`[더피싱] 선박 ${ships.length}척 저장`);

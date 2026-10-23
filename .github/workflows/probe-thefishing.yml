@@ -1,0 +1,38 @@
+name: 더피싱 연결 점검
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Python requests로 공개 목록 확인
+        run: |
+          python - <<'PY'
+          import requests
+          from bs4 import BeautifulSoup
+
+          url = "https://thefishing.kr/reservation/list.php"
+          try:
+              response = requests.get(
+                  url,
+                  params={"sf[]": "1", "page": 1},
+                  headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"},
+                  timeout=20,
+              )
+              response.encoding = "utf-8"
+              soup = BeautifulSoup(response.text, "html.parser")
+              ships = soup.select('a[href*="uid="]')
+              print(f"status={response.status_code} url={response.url} bytes={len(response.content)} ships={len(ships)} title={soup.title.get_text(strip=True) if soup.title else ''}")
+              response.raise_for_status()
+              if not ships:
+                  raise SystemExit("페이지 응답은 200이지만 UID 선박 링크가 없습니다.")
+          except Exception as exc:
+              print(f"probe_failed={type(exc).__name__}: {exc}")
+              raise
+          PY

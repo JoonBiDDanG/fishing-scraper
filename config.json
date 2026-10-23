@@ -30,7 +30,7 @@
   "outputFile": "fishing_data.json",
   "registryFile": "data/thefishing-ships.json",
   "concurrency": 8,
-  "sunsangThrottleMs": 4500,
+  "sunsangThrottleMs": 3200,
   "sources": {
     "sunsang": true,
     "thefishing": true

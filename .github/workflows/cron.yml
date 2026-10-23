@@ -1,16 +1,8 @@
 name: 낚시 일정 스냅샷
 
+# 기존 자동 스크래퍼 중지: 필요할 때만 수동 실행 가능
 on:
-  schedule:
-    # 30분마다 공개 일정 갱신
-    - cron: "*/30 * * * *"
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "scripts/**"
-      - "config.json"
-      - ".github/workflows/cron.yml"
 
 permissions:
   contents: write
@@ -20,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FULL_REFRESH: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+  FULL_REFRESH: "1"
 
 jobs:
   crawl:
@@ -51,19 +43,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add fishing_data.json data/thefishing-ships.json
-          git commit -m "chore: 일정 스냅샷 업데이트 ($(date -u +'%Y-%m-%dT%H:%MZ'))"
+          git commit -m "chore: 일정 스냅샷 수동 업데이트"
           git push
-
-      - name: 요약
-        if: always()
-        run: |
-          if [ -f fishing_data.json ]; then
-            echo "### 스냅샷" >> "$GITHUB_STEP_SUMMARY"
-            echo "- 크기: $(du -h fishing_data.json | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
-            node -e '
-              const d = require("./fishing_data.json");
-              const counts = d.schedules.reduce((a, r) => ((a[r.source] = (a[r.source] || 0) + 1), a), {});
-              console.log(`- 건수: ${d.total}` + Object.entries(counts).map(([k, v]) => ` (${k} ${v})`).join(""));
-              console.log(`- 기간: ${d.minDate} ~ ${d.maxDate}`);
-            ' >> "$GITHUB_STEP_SUMMARY"
-          fi

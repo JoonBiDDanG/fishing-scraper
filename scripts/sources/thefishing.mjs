@@ -118,7 +118,7 @@ function parseListPage(html, configSpecies, ships) {
 export async function crawlRegistry(configSpecies, options = {}) {
   const concurrency = options.concurrency ?? 5;
   const firstHtml = await fetchText(registryPageUrl(1), { headers: HEADERS, timeoutMs: 30000 });
-  const pageNumbers = [...firstHtml.matchAll(/list\\.php\\?[^\"'#]*(?:&amp;|&|\\?)page=(\\d+)/g)].map((match) => Number(match[1]));
+  const pageNumbers = [...firstHtml.matchAll(/list\.php\?[^"'#]*(?:&amp;|&|\?)page=(\d+)/g)].map((match) => Number(match[1]));
   const maxPage = Math.max(1, ...pageNumbers);
 
   const ships = new Map();

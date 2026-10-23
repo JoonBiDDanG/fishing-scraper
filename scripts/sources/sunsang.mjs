@@ -66,14 +66,15 @@ async function throttle() {
   if (wait > 0) await sleep(wait);
 }
 
-async function fetchPage(date, page) {
+async function fetchPage(startDate, endDate, page) {
   await throttle();
   state.requests += 1;
   if (state.requests % 25 === 0) {
     console.log(`[선상24] 요청 ${state.requests}회 진행 중`);
   }
 
-  const url = `${LIST_URL}?type=general&sdate=${encodeURIComponent(date)}&page=${page}`;
+  const range = startDate === endDate ? startDate : `${startDate},${endDate}`;
+  const url = `${LIST_URL}?type=general&sdate=${encodeURIComponent(range)}&page=${page}`;
   try {
     return await fetchJson(url, { headers: HEADERS, timeoutMs: 25000, retries: 2 });
   } catch (error) {
@@ -82,27 +83,33 @@ async function fetchPage(date, page) {
   }
 }
 
-async function crawlOne(date, concurrency) {
-  const first = await fetchPage(date, 1);
+async function crawlRange(dates) {
+  const wantedDates = new Set(dates);
+  const startDate = dates[0];
+  const endDate = dates.at(-1);
+  const first = await fetchPage(startDate, endDate, 1);
   const total = Number(first?.total ?? 0);
   const firstList = Array.isArray(first?.list) ? first.list : [];
   if (!firstList.length) return [];
 
-  // Do not silently truncate at an arbitrary number of pages. The API's total is
-  // authoritative; if it is absent, continue until the provider returns a short page.
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new Error("선상24 응답에 전체 건수가 없어 페이지 범위를 확인할 수 없습니다.");
+  }
+
   const items = [...firstList];
-  let page = 2;
-  const expectedPages = total > 0 ? Math.ceil(total / PAGE_SIZE) : Number.POSITIVE_INFINITY;
-  while (page <= expectedPages && page <= 1000) {
-    const body = await fetchPage(date, page);
+  const expectedPages = Math.ceil(total / PAGE_SIZE);
+  for (let page = 2; page <= expectedPages; page += 1) {
+    const body = await fetchPage(startDate, endDate, page);
     const rows = Array.isArray(body?.list) ? body.list : [];
+    if (!rows.length || (rows.length < PAGE_SIZE && page < expectedPages)) {
+      throw new Error(`페이지 ${page}/${expectedPages}에서 응답이 끊겨 전체 수집을 완료하지 못했습니다.`);
+    }
     items.push(...rows);
-    if (rows.length < PAGE_SIZE) break;
-    page += 1;
   }
 
   const rows = [];
   for (const item of items) {
+    if (!wantedDates.has(item?.sdate)) continue;
     const row = toRow(item);
     if (row) rows.push(row);
   }
@@ -114,49 +121,20 @@ async function crawlOne(date, concurrency) {
  * @returns {{rows: object[], covered: Set<string>}}
  */
 export async function crawlSunsang(dates, speciesList, options = {}) {
-  // Requests are deliberately serial: this public API actively rate-limits bursts.
-  const tasks = dates.map((date) => ({ date }));
+  if (!dates.length) return { rows: [], covered: new Set() };
 
+  // API는 날짜 구간 조회를 지원한다. 전체 날짜를 한 구간으로 페이지 처리해
+  // 날짜별로 첫 페이지부터 반복 요청하던 중복 호출을 없앤다.
   state.blocked = false;
   state.nextAt = 0;
   state.requests = 0;
   state.intervalMs = options.throttleMs ?? 3200;
 
-  // WAF 회피를 위해 날짜 및 페이지 작업을 직렬로 처리한다.
-  const results = await mapLimit(tasks, 1, async (task) => {
-    try {
-      const rows = await crawlOne(task.date, 1);
-      return { ...task, rows };
-    } catch (error) {
-      return { ...task, error };
-    }
-  });
-
-  const merged = new Map();
-  const byDate = new Map();
-  for (const result of results) {
-    if (result.error) {
-      console.warn(`[선상24] ${result.date} 실패: ${result.error.message}`);
-      continue;
-    }
-    for (const row of result.rows) {
-      const previous = merged.get(row.id);
-      if (!previous) {
-        merged.set(row.id, row);
-      } else {
-        const species = new Set(
-          [...previous.speciesText.split(","), ...row.speciesText.split(",")].filter(Boolean),
-        );
-        previous.speciesText = [...species].join(",");
-      }
-    }
-    byDate.set(result.date, true);
+  try {
+    const rows = await crawlRange(dates);
+    return { rows, covered: new Set(dates) };
+  } catch (error) {
+    console.warn(`[선상24] ${dates[0]}~${dates.at(-1)} 실패: ${error.message}`);
+    return { rows: [], covered: new Set(), failed: new Set(dates) };
   }
-
-  const rows = [...merged.values()];
-
-  const covered = new Set([...byDate.keys()]);
-
-  return { rows, covered };
 }
-
